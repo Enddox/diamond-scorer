@@ -230,7 +230,11 @@ const Scorer = (() => {
       API.roster(S.game.season_id, S.game.home_team_id).catch(()=>[]),
     ]);
     S._pool = { away: rosterPool(awayR), home: rosterPool(homeR) };
-    S._draft = S._draft || { away: draftFrom(S.lineups.away), home: draftFrom(S.lineups.home) };
+    // Feature: real-time autosave. The lineup draft lives in localStorage keyed
+    // by game id, so navigating to another tab (which re-opens the Scorer and
+    // resets its in-memory state) no longer wipes an in-progress draft.
+    S._draft = S._draft || loadDraft() || { away: draftFrom(S.lineups.away), home: draftFrom(S.lineups.home) };
+    persistDraft();
     host.innerHTML = `<div style="margin-bottom:12px">
         <label class="lu-posnum"><input type="checkbox" id="lu-posnum" ${S.posAsNumbers?'checked':''} /> Show positions as numbers (P=1 … RF=9)</label>
       </div>
@@ -242,6 +246,16 @@ const Scorer = (() => {
     ['away','home'].forEach(bindSideEditor);
     document.getElementById('lu-save').onclick = saveLineups;
   }
+  // ---- Lineup draft autosave (survives tab switches / reloads) --------------
+  function draftKey() { return `ds_lineup_draft_${S.gameId}`; }
+  function persistDraft() {
+    try { if (S._draft) localStorage.setItem(draftKey(), JSON.stringify(S._draft)); } catch (e) {}
+  }
+  function loadDraft() {
+    try { const r = localStorage.getItem(draftKey()); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+  }
+  function clearDraft() { try { localStorage.removeItem(draftKey()); } catch (e) {} }
+
   function rosterPool(roster) {
     // Only players actually rostered for this team in this season are eligible
     // for the lineup -- avoids the redundant "every player in the database"
@@ -295,6 +309,7 @@ const Scorer = (() => {
   function bindSideEditor(side) {
     document.querySelectorAll(`select[data-side="${side}"]`).forEach((sel)=> sel.onchange = () => {
       S._draft[side][+sel.dataset.i][sel.dataset.f] = sel.value;
+      persistDraft();
     });
     const add = document.querySelector(`[data-add="${side}"]`);
     if (add) add.onclick = () => {
@@ -358,7 +373,7 @@ const Scorer = (() => {
         }));
       if (entries.length) await API.post(`/games/${S.gameId}/lineups`, { side, entries });
     }
-    S._draft = null; S.forceLineup = false; UI.toast('Lineups saved');
+    S._draft = null; S.forceLineup = false; clearDraft(); UI.toast('Lineups saved');
     await reload(); render();
   }
 
@@ -796,17 +811,19 @@ const Scorer = (() => {
         <button class="icon-btn" data-x>&times;</button></div>
       <div class="modal-body">
         ${battedFields}
-        <div class="field"><label>Batter advances to</label>${destSelect('rz-bat', 0, batterDest)}</div>
-        ${runnerRows}
+        <div class="rz-advances">
+          <div class="field"><label>Batter advances to</label>${destSelect('rz-bat', 0, batterDest)}</div>
+          ${runnerRows}
+          <div class="field"><label>RBI</label><input type="number" id="rz-rbi" min="0" value="0"></div>
+        </div>
         <label class="chk" style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="rz-err" ${((info.cat==='roe'||code==='CI')||(isEdit&&editEv.is_error))?'checked':''}> Error(s) charged on the play</label>
         <div class="field" id="rz-err-wrap" style="display:none"><label>Error(s) charged to fielder(s) &middot; select one or more</label>
           <select id="rz-err-on" multiple size="4" style="min-height:96px">${fldOpts('')}</select>
           <span class="muted" style="font-size:11px">Ctrl/Cmd-click to charge multiple fielders on the same play. Runners' extra bases from the error are set above in "advances to".</span></div>
-        <div class="field"><label>RBI</label><input type="number" id="rz-rbi" min="0" value="0"></div>
         <div class="rz-preview" id="rz-prev"></div>
       </div>
       <div class="modal-foot"><button class="btn ghost" data-cancel>Cancel</button>
-        <button class="btn primary" data-ok>${isEdit?'Save Play':'Record Play'}</button></div>`);
+        <button class="btn primary" data-ok>${isEdit?'Save Play':'Record Play'}</button></div>`, { wide: true });
     const m = document.getElementById('modal');
     bindPickers(m);
     bindFielderPicker(m, 'rz-fld');

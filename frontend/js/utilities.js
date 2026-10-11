@@ -8,12 +8,13 @@ const Utilities = (() => {
   const root = () => document.getElementById('view-root');
 
   function actions() {
-    const session = `<button class="btn ghost" data-act="export-session" title="Save all data to a .zip">⬇ Export Session</button>`
-      + `<button class="btn ghost" data-act="import-session" title="Load data from a .zip">⬆ Import Session</button>`;
+    const session = `<button class="btn ghost" data-act="export-session" title="Save all data to a .zip">⬆ Export Session</button>`
+      + `<button class="btn ghost" data-act="import-session" title="Load data from a .zip">⬇ Import Session</button>`;
     let main = '';
     if (state.tab === 'leagues' && !state.leagueId) main = `<button class="btn primary" data-act="new-league">+ New League</button>`;
     else if (state.tab === 'teams') main = `<button class="btn primary" data-act="new-team">+ New Team</button>`;
-    else if (state.tab === 'players') main = `<button class="btn primary" data-act="new-player">+ New Player</button>`;
+    else if (state.tab === 'players') main = `<button class="btn primary" data-act="new-player">+ New Player</button>`
+      + `<button class="btn ghost" data-act="merge-players" title="Combine duplicate player records into one">⇄ Merge</button>`;
     return main + session;
   }
 
@@ -40,6 +41,7 @@ const Utilities = (() => {
     if (a === 'new-league') editLeague();
     else if (a === 'new-team') createTeam();
     else if (a === 'new-player') createPlayer();
+    else if (a === 'merge-players') mergePlayers();
     else if (a === 'export-session') exportSession();
     else if (a === 'import-session') importSession();
   }
@@ -450,8 +452,9 @@ const Utilities = (() => {
       body.querySelector('#e1').onclick = () => createPlayer(); return;
     }
     body.innerHTML = `<div class="panel"><div class="panel-body">
-      <table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Pos</th><th>Bats/Throws</th><th></th></tr></thead><tbody>` +
+      <table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Team</th><th>Pos</th><th>Bats/Throws</th><th></th></tr></thead><tbody>` +
       players.map((p) => `<tr><td><span class="tag mono">${UI.esc(p.public_id||('#'+p.id))}</span></td><td><a class="link" data-detail="${p.id}">${UI.esc(p.full_name)}</a></td>
+        <td>${p.team_name?UI.esc(p.team_name):'<span class="muted">\u2014</span>'}</td>
         <td>${p.primary_position?`<span class="tag">${UI.esc(p.primary_position)}</span>`:'<span class="muted">\u2014</span>'}</td>
         <td class="muted">${UI.esc(p.bats||'-')}/${UI.esc(p.throws||'-')}</td>
         <td class="row-actions">
@@ -469,6 +472,111 @@ const Utilities = (() => {
       }
     });
   }
+  // Feature: Merge duplicate player records into one surviving player.
+  // Step 1 — pick two or more players (searchable ID–Name boxes, unlimited).
+  async function mergePlayers() {
+    const players = await API.players();
+    if (players.length < 2) { UI.toast('Need at least two players to merge.', 'err'); return; }
+    const label = (p) => `${p.public_id||('#'+p.id)} - ${p.full_name}`;
+    const byLabel = {};
+    players.forEach((p) => { byLabel[label(p)] = p; });
+    const dlId = 'merge-dl';
+    const dl = `<datalist id="${dlId}">` +
+      players.map((p)=>`<option value="${UI.esc(label(p))}"></option>`).join('') + `</datalist>`;
+    const rowHtml = (i) => `<div class="field merge-row">
+        <label>${i===0?'Primary player — kept <span style="color:var(--red)">*</span>':'Merge into primary <span style="color:var(--red)">*</span>'}</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="merge-pick" list="${dlId}" placeholder="Search by ID or name…" style="flex:1" />
+          ${i>1?'<button class="btn ghost sm merge-rm" title="Remove this row">×</button>':''}
+        </div></div>`;
+    UI.openModal(`
+      <div class="modal-head"><h2>Merge Players</h2><button class="icon-btn" data-x>×</button></div>
+      <div class="modal-body">
+        <p class="muted">Combine duplicate player records into one. The <b>primary</b> player (first box) is kept; every other selected player's history — rosters, lineups, recorded plays and pitches — is reassigned to the primary, then the duplicates are deleted. This cannot be undone.</p>
+        <div id="merge-rows">${rowHtml(0)}${rowHtml(1)}</div>
+        <button class="btn ghost sm" id="merge-add" style="margin-top:6px">+ Add another player</button>
+        ${dl}
+      </div>
+      <div class="modal-foot"><button class="btn ghost" data-cancel>Cancel</button>
+        <button class="btn primary" data-ok>Merge</button></div>`);
+    const m = document.getElementById('modal');
+    let counter = 2;
+    function bindRm() {
+      m.querySelectorAll('.merge-rm').forEach((b)=> b.onclick = () => b.closest('.merge-row').remove());
+    }
+    bindRm();
+    m.querySelector('#merge-add').onclick = () => {
+      m.querySelector('#merge-rows').insertAdjacentHTML('beforeend', rowHtml(counter));
+      counter += 1; bindRm();
+    };
+    m.querySelector('[data-x]').onclick = UI.closeModal;
+    m.querySelector('[data-cancel]').onclick = UI.closeModal;
+    m.querySelector('[data-ok]').onclick = () => {
+      const picks = [...m.querySelectorAll('.merge-pick')].map((inp)=>inp.value.trim()).filter(Boolean);
+      const chosen = [];
+      for (const v of picks) {
+        const p = byLabel[v];
+        if (!p) { UI.toast(`"${v}" is not a valid player — pick from the list.`, 'err'); return; }
+        if (!chosen.some((x)=>x.id===p.id)) chosen.push(p);
+      }
+      if (chosen.length < 2) { UI.toast('Select at least two different players to merge.', 'err'); return; }
+      confirmMerge(chosen);
+    };
+  }
+
+  // Step 2 — Edit-Player-style confirm prefilled from the FIRST (primary)
+  // player. Editing here updates the surviving record while the rest merge in.
+  function confirmMerge(chosen) {
+    const target = chosen[0];
+    const sources = chosen.slice(1);
+    const curName = [target.first_name, target.last_name].filter(Boolean).join(' ');
+    const posOpts = `<option value="">— none —</option>` +
+      POSITIONS.map((c)=>`<option value="${c}" ${c===target.primary_position?'selected':''}>${c} — ${POS_LABELS[c]}</option>`).join('');
+    const sel = (v, cur) => v===(cur||'') ? 'selected' : '';
+    const batOpts = [['',''],['R','Right'],['L','Left'],['S','Switch']].map(([v,l])=>`<option value="${v}" ${sel(v,target.bats)}>${l}</option>`).join('');
+    const thrOpts = [['',''],['R','Right'],['L','Left']].map(([v,l])=>`<option value="${v}" ${sel(v,target.throws)}>${l}</option>`).join('');
+    const srcList = sources.map((p)=>`<li>${UI.esc(p.public_id||('#'+p.id))} — ${UI.esc(p.full_name)}</li>`).join('');
+    UI.openModal(`
+      <div class="modal-head"><h2>Confirm Merge → ${UI.esc(target.full_name)}</h2><button class="icon-btn" data-x>×</button></div>
+      <div class="modal-body">
+        <p class="muted">These players will be merged <b>into</b> the primary, then permanently deleted:</p>
+        <ul class="merge-src">${srcList}</ul>
+        <p class="muted">Review the surviving player (kept as <span class="tag mono">${UI.esc(target.public_id||('#'+target.id))}</span>):</p>
+        <form id="mg-form">
+          <div class="field"><label>Player Name <span style="color:var(--red)">*</span></label><input name="player_name" value="${UI.esc(curName)}" /></div>
+          <div class="field"><label>Primary Position</label><select name="primary_position">${posOpts}</select></div>
+          <div class="grid-2" style="grid-template-columns:1fr 1fr;gap:10px">
+            <div class="field"><label>Bats</label><select name="bats">${batOpts}</select></div>
+            <div class="field"><label>Throws</label><select name="throws">${thrOpts}</select></div>
+          </div>
+          <div class="field"><label>Birthdate</label><input type="date" name="birthdate" value="${UI.esc(target.birthdate||'')}" /></div>
+          <div class="field"><label>Notes</label><textarea name="notes" rows="3">${UI.esc(target.notes||'')}</textarea></div>
+        </form>
+      </div>
+      <div class="modal-foot"><button class="btn ghost" data-cancel>Cancel</button>
+        <button class="btn danger" data-ok>Merge ${sources.length+1} players</button></div>`);
+    const m = document.getElementById('modal');
+    m.querySelector('[data-x]').onclick = UI.closeModal;
+    m.querySelector('[data-cancel]').onclick = UI.closeModal;
+    m.querySelector('[data-ok]').onclick = async () => {
+      const f = m.querySelector('#mg-form');
+      const nm = f.player_name.value.trim();
+      if (!nm) { f.player_name.style.borderColor = 'var(--red)'; UI.toast('Player name is required', 'err'); return; }
+      const parts = nm.split(/\s+/); const first = parts.shift(); const last = parts.join(' ');
+      const profile = {
+        first_name: first, last_name: last,
+        primary_position: f.primary_position.value || null,
+        bats: f.bats.value || null, throws: f.throws.value || null,
+        birthdate: f.birthdate.value || null, notes: f.notes.value.trim() || null,
+      };
+      try {
+        await API.post('/players/merge', { target_id: target.id, source_ids: sources.map((p)=>p.id), profile });
+        UI.toast(`Merged ${sources.length+1} players into ${nm}`);
+        UI.closeModal(); render(root());
+      } catch (e) { UI.toast(e.message || 'Merge failed', 'err'); }
+    };
+  }
+
   // Feature 8: create a new player AND optionally assign them to a team in one
   // step via cascading League -> Season -> Team dropdowns.
   async function createPlayer() {
@@ -606,5 +714,5 @@ const Utilities = (() => {
     document.querySelectorAll('#modal [data-x]').forEach((b) => b.onclick = UI.closeModal);
   }
 
-  return { render, actions, onAction, state };
+  return { render, actions, onAction, state, mergePlayers };
 })();

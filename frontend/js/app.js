@@ -38,6 +38,13 @@ const App = (() => {
       const hidden = app.classList.toggle('sidebar-hidden');
       localStorage.setItem('ds_sidebar_hidden', hidden ? '1' : '0');
     };
+    // "Hide Sidebar" button at the bottom of the sidebar. Hiding reveals the
+    // top-bar ☰ toggle, which brings the sidebar back.
+    const hideBtn = document.getElementById('sidebar-hide');
+    if (hideBtn) hideBtn.onclick = () => {
+      app.classList.add('sidebar-hidden');
+      localStorage.setItem('ds_sidebar_hidden', '1');
+    };
     show('utilities'); // start on the first working module
   }
 

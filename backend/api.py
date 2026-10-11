@@ -61,6 +61,12 @@ class RosterIn(BaseModel):
     position: str | None = None
 
 
+class MergeIn(BaseModel):
+    target_id: int
+    source_ids: list[int] = []
+    profile: dict | None = None
+
+
 # ---------------------------------------------------------------------------
 # Leagues
 # ---------------------------------------------------------------------------
@@ -177,6 +183,17 @@ def api_get_player(player_id: int):
 @router.get("/players/{player_id}/history")
 def api_player_history(player_id: int):
     return repo.player_history(player_id)
+
+
+@router.post("/players/merge")
+def api_merge_players(body: MergeIn):
+    try:
+        out = repo.merge_players(body.target_id, body.source_ids, body.profile)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if not out:
+        raise HTTPException(404, "Target player not found")
+    return out
 
 
 @router.post("/players")

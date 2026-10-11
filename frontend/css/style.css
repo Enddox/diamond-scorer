@@ -76,6 +76,14 @@ body {
   color: #fff; box-shadow: inset 3px 0 0 var(--blue);
 }
 .sidebar-foot { margin-top: auto; padding: 8px 6px; }
+.sidebar-hide-btn {
+  width: 100%; margin-bottom: 10px; padding: 9px 12px;
+  background: var(--bg-2); color: var(--txt-1);
+  border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+  font-size: 13px; cursor: pointer; text-align: center;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.sidebar-hide-btn:hover { background: var(--bg-1); color: var(--txt-0); border-color: var(--blue); }
 .badge {
   font-size: 11px; color: var(--txt-2);
   border: 1px solid var(--border); padding: 4px 8px; border-radius: 20px;
@@ -162,6 +170,12 @@ table.tbl .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
   position: relative; width: min(560px, 92vw); max-height: 88vh; overflow: auto;
   background: linear-gradient(180deg, var(--panel-2), var(--panel));
   border: 1px solid var(--border-2); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+/* Feature: wider, less-vertical play-entry popup. */
+.modal.wide { width: min(880px, 94vw); }
+.rz-advances {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0 16px;
 }
 .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; border-bottom: 1px solid var(--border); }
 .modal-head h2 { margin: 0; font-size: 17px; }

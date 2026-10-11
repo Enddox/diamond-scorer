@@ -20,9 +20,11 @@ const UI = (() => {
 
   // Modal open/close
   let _modalKeyHandler = null;
-  function openModal(html) {
+  function openModal(html, opts = {}) {
     const host = document.getElementById('modal-host');
-    document.getElementById('modal').innerHTML = html;
+    const modalEl = document.getElementById('modal');
+    modalEl.className = 'modal' + (opts && opts.wide ? ' wide' : '');
+    modalEl.innerHTML = html;
     host.classList.remove('hidden');
     host.querySelector('.modal-backdrop').onclick = closeModal;
     // Map Enter -> primary/Save action and Esc -> Cancel/Close for every modal.
