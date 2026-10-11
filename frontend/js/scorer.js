@@ -29,11 +29,45 @@ const Scorer = (() => {
   }
 
   async function open(gameId) {
-    S = { gameId, pitcher: null, catcher: null, pitches: [] };
-    await reload();
-    document.getElementById('view-title').textContent = 'Scorer';
-    document.querySelectorAll('.nav-item').forEach((n) => n.classList.remove('active'));
-    render();
+    // Error boundary: Scorer.open() is invoked un-awaited/un-caught from
+    // games.js and setup.js, so without this a throw here would escape as an
+    // unhandledrejection (or leave #view-root blank). Keep the app shell alive
+    // by rendering an inline, retryable error card into the view instead.
+    try {
+      S = { gameId, pitcher: null, catcher: null, pitches: [] };
+      await reload();
+      document.getElementById('view-title').textContent = 'Scorer';
+      document.querySelectorAll('.nav-item').forEach((n) => n.classList.remove('active'));
+      render();
+    } catch (e) {
+      showScorerError(e, () => open(gameId));
+    }
+  }
+
+  // Render a recoverable inline error into #view-root (mirrors App.show's
+  // catch), so a scorer failure never leaves a blank screen.
+  function showScorerError(err, retry) {
+    if (typeof console !== 'undefined') console.error('[scorer]', err);
+    const r = root();
+    if (!r) return;
+    r.innerHTML = '';
+    const box = document.createElement('div');
+    box.className = 'empty';
+    box.innerHTML = '<div class="big">\u26A0\uFE0F</div>'
+      + '<div>The scorer ran into a problem and couldn\u2019t load this game.</div>';
+    const row = document.createElement('div');
+    row.setAttribute('style', 'margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap');
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'btn primary';
+    retryBtn.textContent = 'Retry';
+    retryBtn.onclick = () => { try { retry && retry(); } catch (_e) {} };
+    const backBtn = document.createElement('button');
+    backBtn.className = 'btn ghost';
+    backBtn.textContent = 'Back to Games';
+    backBtn.onclick = () => { try { App.show('games'); } catch (_e) {} };
+    row.appendChild(retryBtn); row.appendChild(backBtn);
+    box.appendChild(row);
+    r.appendChild(box);
   }
 
   async function reload() {
@@ -115,17 +149,21 @@ const Scorer = (() => {
 
   // ------------------------------------------------------------------ render
   function render() {
-    S._names = null;
-    defaultBattery();
-    const g = S.game;
-    root().innerHTML = `
-      <div class="scorer">
-        ${headerHtml(g)}
-        ${lineScoreHtml()}
-        ${!lineupReady() ? lineupSetupHtml() : liveHtml()}
-      </div>`;
-    bindHeader();
-    if (!lineupReady()) bindLineupSetup(); else bindLive();
+    try {
+      S._names = null;
+      defaultBattery();
+      const g = S.game;
+      root().innerHTML = `
+        <div class="scorer">
+          ${headerHtml(g)}
+          ${lineScoreHtml()}
+          ${!lineupReady() ? lineupSetupHtml() : liveHtml()}
+        </div>`;
+      bindHeader();
+      if (!lineupReady()) bindLineupSetup(); else bindLive();
+    } catch (e) {
+      showScorerError(e, () => render());
+    }
   }
 
   function headerHtml(g) {
