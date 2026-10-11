@@ -37,14 +37,27 @@ const Scorer = (() => {
   }
 
   async function reload() {
-    S.game = await API.get(`/games/${S.gameId}`);
-    S.pitchTracking = !!S.game.pitch_tracking;
+    // Perf: fetch everything the scorer needs in PARALLEL rather than six
+    // sequential round-trips. This is the hot path -- it runs after every
+    // recorded/edited play -- so collapsing it from 6x latency to ~1x makes
+    // scoring feel immediate. The catalogue is static, so reuse the cached
+    // copy once we have it.
+    const [game, lineups, ls, events, pitchers, cat] = await Promise.all([
+      API.get(`/games/${S.gameId}`),
+      API.get(`/games/${S.gameId}/lineups`),
+      API.get(`/games/${S.gameId}/state`),
+      API.get(`/games/${S.gameId}/events`),
+      API.get(`/games/${S.gameId}/pitchers`).catch(() => []),
+      S.cat ? Promise.resolve(S.cat) : API.get('/games/catalogue'),
+    ]);
+    S.game = game;
+    S.pitchTracking = !!game.pitch_tracking;
     if (!Array.isArray(S.pitches)) S.pitches = [];
-    S.lineups = await API.get(`/games/${S.gameId}/lineups`);
-    S.ls = await API.get(`/games/${S.gameId}/state`);
-    S.events = await API.get(`/games/${S.gameId}/events`);
-    S.pitchers = await API.get(`/games/${S.gameId}/pitchers`).catch(()=>[]);
-    if (!S.cat) S.cat = await API.get('/games/catalogue');
+    S.lineups = lineups;
+    S.ls = ls;
+    S.events = events;
+    S.pitchers = pitchers;
+    S.cat = cat;
   }
 
   function battingSide() { return S.ls.state.half === 'T' ? 'away' : 'home'; }
@@ -234,6 +247,9 @@ const Scorer = (() => {
     // by game id, so navigating to another tab (which re-opens the Scorer and
     // resets its in-memory state) no longer wipes an in-progress draft.
     S._draft = S._draft || loadDraft() || { away: draftFrom(S.lineups.away), home: draftFrom(S.lineups.home) };
+    // Guarantee both sides are present even if a partial draft slipped through.
+    if (!Array.isArray(S._draft.away)) S._draft.away = draftFrom(S.lineups.away);
+    if (!Array.isArray(S._draft.home)) S._draft.home = draftFrom(S.lineups.home);
     persistDraft();
     host.innerHTML = `<div style="margin-bottom:12px">
         <label class="lu-posnum"><input type="checkbox" id="lu-posnum" ${S.posAsNumbers?'checked':''} /> Show positions as numbers (P=1 … RF=9)</label>
@@ -252,7 +268,19 @@ const Scorer = (() => {
     try { if (S._draft) localStorage.setItem(draftKey(), JSON.stringify(S._draft)); } catch (e) {}
   }
   function loadDraft() {
-    try { const r = localStorage.getItem(draftKey()); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+    try {
+      const r = localStorage.getItem(draftKey());
+      if (!r) return null;
+      const d = JSON.parse(r);
+      // Only accept a well-formed draft: an object with away/home ARRAYS.
+      // Anything else is stale/corrupt and would crash the editor, so discard
+      // it (this is the kind of leftover that used to require a cache clear).
+      if (!d || typeof d !== 'object' || !Array.isArray(d.away) || !Array.isArray(d.home)) {
+        clearDraft();
+        return null;
+      }
+      return d;
+    } catch (e) { clearDraft(); return null; }
   }
   function clearDraft() { try { localStorage.removeItem(draftKey()); } catch (e) {} }
 
@@ -281,7 +309,10 @@ const Scorer = (() => {
     return (S.posAsNumbers && POS_TO_NUM[code]) ? POS_TO_NUM[code] : code;
   }
   function sideEditor(side, name) {
-    const pool = S._pool[side]; const draft = S._draft[side];
+    const pool = S._pool[side] || [];
+    // Defensive: never let a missing/corrupt side array blank the screen.
+    if (!Array.isArray(S._draft[side])) S._draft[side] = draftFrom(S.lineups[side]);
+    const draft = S._draft[side];
     const opts = (sel) => pool.map((p)=>`<option value="${p.player_id}" ${p.player_id==sel?'selected':''}>${UI.esc(p.full_name)}</option>`).join('');
     const posOpts = (sel) => POS.map((p)=>`<option value="${p}" ${p==sel?'selected':''}>${posLabel(p)}</option>`).join('');
     let batNum = 0;
@@ -601,11 +632,15 @@ const Scorer = (() => {
   // A clickable half-field diagram. Returns SVG markup; the caller wires up
   // click handling to capture a normalised (x,y) drop location.
   function fieldPickerSvg() {
-    const S0 = 320, H = 300;
-    const hx = 0.5 * S0, hy = 0.93 * H;
+    // Wider-than-tall fan so the diamond reads like a real field instead of a
+    // vertically-stretched one. KX/KY control the horizontal/vertical spread
+    // (KY < KX keeps it from looking enlarged vertically).
+    const S0 = 360, H = 250;
+    const hx = 0.5 * S0, hy = 0.9 * H;
+    const KX = 0.52 * S0, KY = 0.72 * H;
     const pt = (ang, rad) => {
       const r = ang * Math.PI / 180;
-      return [hx + rad * 0.5 * S0 * Math.sin(r), hy - rad * 0.86 * H * Math.cos(r)];
+      return [hx + rad * KX * Math.sin(r), hy - rad * KY * Math.cos(r)];
     };
     const lf = pt(-45, 1.02), cf = pt(0, 1.06), rf = pt(45, 1.02);
     const b1 = pt(45, .42), b2 = pt(0, .52), b3 = pt(-45, .42);
@@ -810,17 +845,21 @@ const Scorer = (() => {
       <div class="modal-head"><h2>${isEdit?'Edit \u00b7 ':''}${UI.esc(info.label)} &middot; ${UI.esc(b.full_name)}</h2>
         <button class="icon-btn" data-x>&times;</button></div>
       <div class="modal-body">
-        ${battedFields}
-        <div class="rz-advances">
-          <div class="field"><label>Batter advances to</label>${destSelect('rz-bat', 0, batterDest)}</div>
-          ${runnerRows}
-          <div class="field"><label>RBI</label><input type="number" id="rz-rbi" min="0" value="0"></div>
+        <div class="rz-cols${battedFields?'':' rz-onecol'}">
+          ${battedFields?`<div class="rz-col rz-col-left">${battedFields}</div>`:''}
+          <div class="rz-col rz-col-right">
+            <div class="rz-advances">
+              <div class="field"><label>Batter advances to</label>${destSelect('rz-bat', 0, batterDest)}</div>
+              ${runnerRows}
+              <div class="field"><label>RBI</label><input type="number" id="rz-rbi" min="0" value="0"></div>
+            </div>
+            <label class="chk" style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="rz-err" ${((info.cat==='roe'||code==='CI')||(isEdit&&editEv.is_error))?'checked':''}> Error(s) charged on the play</label>
+            <div class="field" id="rz-err-wrap" style="display:none"><label>Error(s) charged to fielder(s) &middot; select one or more</label>
+              <select id="rz-err-on" multiple size="4" style="min-height:96px">${fldOpts('')}</select>
+              <span class="muted" style="font-size:11px">Ctrl/Cmd-click to charge multiple fielders on the same play. Runners' extra bases from the error are set above in "advances to".</span></div>
+            <div class="rz-preview" id="rz-prev"></div>
+          </div>
         </div>
-        <label class="chk" style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" id="rz-err" ${((info.cat==='roe'||code==='CI')||(isEdit&&editEv.is_error))?'checked':''}> Error(s) charged on the play</label>
-        <div class="field" id="rz-err-wrap" style="display:none"><label>Error(s) charged to fielder(s) &middot; select one or more</label>
-          <select id="rz-err-on" multiple size="4" style="min-height:96px">${fldOpts('')}</select>
-          <span class="muted" style="font-size:11px">Ctrl/Cmd-click to charge multiple fielders on the same play. Runners' extra bases from the error are set above in "advances to".</span></div>
-        <div class="rz-preview" id="rz-prev"></div>
       </div>
       <div class="modal-foot"><button class="btn ghost" data-cancel>Cancel</button>
         <button class="btn primary" data-ok>${isEdit?'Save Play':'Record Play'}</button></div>`, { wide: true });
@@ -835,13 +874,16 @@ const Scorer = (() => {
     const svg = m.querySelector('#fp-svg');
     if (svg) {
       const marker = m.querySelector('#fp-marker');
+      // Map normalized hit coords onto whatever viewBox the field uses, so the
+      // marker lands exactly where clicked regardless of the field dimensions.
+      const vb = (svg.viewBox && svg.viewBox.baseVal) || { width: 360, height: 250 };
       svg.addEventListener('click', (ev) => {
         const r = svg.getBoundingClientRect();
         const vx = (ev.clientX - r.left) / r.width;
         const vy = (ev.clientY - r.top) / r.height;
         hit = { x: Math.max(0, Math.min(1, vx)), y: Math.max(0, Math.min(1, vy)) };
-        marker.setAttribute('cx', (hit.x * 320).toFixed(1));
-        marker.setAttribute('cy', (hit.y * 300).toFixed(1));
+        marker.setAttribute('cx', (hit.x * vb.width).toFixed(1));
+        marker.setAttribute('cy', (hit.y * vb.height).toFixed(1));
         marker.style.display = '';
         const loc = m.querySelector('#rz-loc');
         if (loc) loc.textContent = `Drop location set (${(hit.x*100).toFixed(0)}%, ${(hit.y*100).toFixed(0)}%). Click again to move it.`;

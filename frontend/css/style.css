@@ -177,6 +177,15 @@ table.tbl .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
   display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 0 16px;
 }
+/* Two-column play-entry body: field/batted-ball on the left, advances/error/
+   preview on the right, so the Save button stays reachable without scrolling. */
+.rz-cols { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr); gap: 0 22px; align-items: start; }
+.rz-cols.rz-onecol { grid-template-columns: 1fr; }
+.rz-col { min-width: 0; }
+.rz-col-left { align-self: start; }
+@media (max-width: 720px) {
+  .rz-cols { grid-template-columns: 1fr; }
+}
 .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; border-bottom: 1px solid var(--border); }
 .modal-head h2 { margin: 0; font-size: 17px; }
 .modal-body { padding: 20px; }
@@ -375,7 +384,7 @@ table.stat-tbl tbody tr:nth-child(even) td { background: rgba(255,255,255,.015);
 .spray-dot:hover { stroke: #fff; stroke-width: 1.6; }
 
 /* ------- Clickable field picker (record play) ------- */
-.fieldpick { width: 100%; max-width: 360px; margin: 6px auto; }
+.fieldpick { width: 100%; max-width: 300px; margin: 6px auto; }
 .fieldpick-svg { width: 100%; height: auto; display: block; cursor: crosshair; border-radius: var(--radius-sm); }
 
 /* ------- Initialize Game / Scoring wizard ------- */
