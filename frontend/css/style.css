@@ -33,7 +33,11 @@ body {
 }
 
 #app { display: grid; grid-template-columns: 248px 1fr; height: 100vh; }
-#app.sidebar-hidden { grid-template-columns: 0 1fr; }
+/* Collapse to a SINGLE column so the main content keeps its full width.
+   (A hidden sidebar leaves display:none -> it drops out of the grid, so the
+   content must become the only column; otherwise it would auto-place into a
+   leftover 0-width track and the whole screen would look blank.) */
+#app.sidebar-hidden { grid-template-columns: 1fr; }
 #app.sidebar-hidden .sidebar { display: none; }
 .topbar-left { display: flex; align-items: center; gap: 12px; }
 .icon-btn {

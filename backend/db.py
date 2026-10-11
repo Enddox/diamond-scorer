@@ -62,6 +62,17 @@ def get_conn() -> sqlite3.Connection:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
+        # FastAPI runs sync endpoints across a threadpool, so several requests
+        # (e.g. the scorer's parallel reload + a lineup save) can touch the DB
+        # at once. Each thread holds its own connection, so a write arriving
+        # while another write is in flight would otherwise fail INSTANTLY with
+        # "database is locked" (SQLITE_BUSY) -- surfacing to the UI as the
+        # "something went wrong, reload" overlay when saving lineups. A
+        # busy_timeout makes a blocked writer wait and retry for up to 5s
+        # instead of erroring out immediately. synchronous=NORMAL is the
+        # recommended durable setting under WAL.
+        conn.execute("PRAGMA busy_timeout = 5000")
+        conn.execute("PRAGMA synchronous = NORMAL")
         _local.conn = conn
     return conn
 

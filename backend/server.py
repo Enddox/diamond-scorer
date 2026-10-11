@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import os
 import secrets
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -53,6 +54,32 @@ def _install_optional_basic_auth(app: FastAPI) -> None:
         return await call_next(request)
 
 
+def _install_write_serialization(app: FastAPI) -> None:
+    """Serialize mutating requests so SQLite never sees two writers at once.
+
+    The app is a single process whose sync endpoints run across Starlette's
+    threadpool, so two write requests (e.g. the scorer saving the away and
+    home lineups, or a save racing an in-flight action) can land on different
+    threads and hit the DB concurrently. SQLite allows only ONE writer, so the
+    second writer would either fail instantly with ``database is locked`` --
+    surfacing to the UI as the ``Something went wrong, reload`` recovery
+    overlay -- or, with a busy_timeout, stall for many seconds under WAL
+    writer contention. Writes are inexpensive and infrequent for a scoring
+    app, so we simply funnel every mutating (non-GET/HEAD/OPTIONS) request
+    through one asyncio lock. Reads stay fully concurrent (WAL readers never
+    block), so this adds no latency to the hot read path.
+    """
+    lock = asyncio.Lock()
+    SAFE = {"GET", "HEAD", "OPTIONS"}
+
+    @app.middleware("http")
+    async def _serialize_writes(request, call_next):
+        if request.method in SAFE:
+            return await call_next(request)
+        async with lock:
+            return await call_next(request)
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Diamond Scorer", version="0.1.0")
 
@@ -62,6 +89,9 @@ def create_app() -> FastAPI:
 
     # Optional auth for hosted/public deployments (no-op unless env var set).
     _install_optional_basic_auth(app)
+
+    # Serialize writes to keep concurrent saves from colliding on SQLite.
+    _install_write_serialization(app)
 
     app.include_router(api_router)
 

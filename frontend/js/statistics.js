@@ -81,20 +81,69 @@ const Statistics = (() => {
         <label>Season <select id="st-season" style="min-width:240px">${seasonOpts}</select></label>
         <label>Team <select id="st-team">${teamOpts}</select></label>
         <span class="st-levels">
+          <span class="st-export" style="position:relative;display:inline-block">
+            <button class="btn sm ghost" id="st-export-btn">Export ▾</button>
+            <span id="st-export-menu" style="display:none;position:absolute;top:100%;left:0;z-index:50;background:#0f1b2e;border:1px solid #1e3050;border-radius:8px;min-width:150px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.4)">
+              <button class="btn sm ghost" data-export="html" style="display:block;width:100%;text-align:left">Export Web</button>
+              <button class="btn sm ghost" data-export="pdf" style="display:block;width:100%;text-align:left">Export PDF</button>
+            </span>
+          </span>
           ${['basic','advanced','detailed'].map((lv) =>
             `<button class="btn sm ${state.level===lv?'primary':'ghost'}" data-lv="${lv}">${lv[0].toUpperCase()+lv.slice(1)}</button>`).join('')}
         </span>
       </div></div>
       <div class="panel"><div class="panel-head st-tabs">
-        ${['batting','pitching','fielding','standings'].map((t) =>
-          `<button class="tabbtn ${state.tab===t?'active':''}" data-tab="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}
+        ${['all','batting','pitching','fielding','standings'].map((t) =>
+          `<button class="tabbtn ${state.tab===t?'active':''}" data-tab="${t}">${t==='all'?'All Individual':t[0].toUpperCase()+t.slice(1)}</button>`).join('')}
         <span class="st-gc muted" id="st-gc"></span>
       </div><div class="panel-body" id="st-body"><p class="muted">Loading\u2026</p></div></div>`;
     r.querySelector('#st-season').onchange = (e) => { state.seasonId = Number(e.target.value); state.teamId = null; state.data = null; render(r); };
     r.querySelector('#st-team').onchange = (e) => { state.teamId = e.target.value ? Number(e.target.value) : null; state.data = null; load(); };
     r.querySelectorAll('[data-lv]').forEach((b) => b.onclick = () => { state.level = b.dataset.lv; render(r); });
     r.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; renderBody(); });
+    bindExport(r);
     await load();
+  }
+
+  function bindExport(r) {
+    const btn = r.querySelector('#st-export-btn');
+    const menu = r.querySelector('#st-export-menu');
+    if (!btn || !menu) return;
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    };
+    document.addEventListener('click', () => { menu.style.display = 'none'; }, { once: true });
+    menu.querySelectorAll('[data-export]').forEach((b) => b.onclick = async (e) => {
+      e.stopPropagation();
+      menu.style.display = 'none';
+      const ext = b.dataset.export;
+      const q = [`season_id=${state.seasonId}`, `tab=${state.tab}`, `level=${state.level}`];
+      if (state.teamId) q.push(`team_id=${state.teamId}`);
+      const qs = q.join('&');
+      try {
+        const bridge = window.pywebview && window.pywebview.api && window.pywebview.api.save_stats;
+        if (bridge) {
+          const res = await window.pywebview.api.save_stats(state.seasonId, state.teamId, state.tab, state.level, ext);
+          if (res && res.ok) {
+            UI.toast(`Saved to ${res.path}`, 'ok', 6000);
+            if (window.pywebview.api.open_folder) { try { await window.pywebview.api.open_folder(res.path); } catch (err) { /* ignore */ } }
+          } else if (res && res.cancelled) {
+            UI.toast('Save cancelled', 'ok');
+          } else {
+            UI.toast('Export failed: ' + ((res && res.error) || 'unknown error'), 'err');
+          }
+        } else {
+          const a = document.createElement('a');
+          a.href = `/api/stats/export.${ext}?${qs}`;
+          a.download = '';
+          document.body.appendChild(a); a.click(); a.remove();
+          UI.toast(ext === 'pdf' ? 'Downloading PDF…' : 'Downloading report…', 'ok');
+        }
+      } catch (err) {
+        UI.toast('Export failed: ' + err.message, 'err');
+      }
+    });
   }
 
   async function load() {
@@ -112,6 +161,7 @@ const Statistics = (() => {
     const host = document.getElementById('st-body');
     if (!state.data) { host.innerHTML = '<p class="muted">Loading\u2026</p>'; return; }
     if (state.tab === 'standings') { host.innerHTML = standingsHtml(); return; }
+    if (state.tab === 'all') { host.innerHTML = allIndividualHtml(); return; }
     const rows = state.data[state.tab] || [];
     if (!rows.length) {
       host.innerHTML = UI.empty('\ud83d\udcc8', 'No qualifying players in this scope yet.');
@@ -123,6 +173,26 @@ const Statistics = (() => {
     const body = rows.map((r) => `<tr><td class="lft">${UI.esc(r.name)}</td><td class="lft muted">${UI.esc(r.team||'')}</td>` +
       cols.map(([k, , rate]) => `<td>${fmt(r[k], rate)}</td>`).join('') + '</tr>').join('');
     host.innerHTML = `<div class="st-scroll"><table class="tbl stat-tbl"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+
+  function tableHtml(tab) {
+    const rows = state.data[tab] || [];
+    if (!rows.length) return UI.empty('\ud83d\udcc8', 'No qualifying players in this scope yet.');
+    const cols = colsFor(tab);
+    const head = `<th class="lft">Player</th><th class="lft">Tm</th>` +
+      cols.map(([, l]) => `<th>${l}</th>`).join('');
+    const body = rows.map((r) => `<tr><td class="lft">${UI.esc(r.name)}</td><td class="lft muted">${UI.esc(r.team||'')}</td>` +
+      cols.map(([k, , rate]) => `<td>${fmt(r[k], rate)}</td>`).join('') + '</tr>').join('');
+    return `<div class="st-scroll"><table class="tbl stat-tbl"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+
+  function allIndividualHtml() {
+    return [['batting', 'Batting'], ['pitching', 'Pitching'], ['fielding', 'Fielding']]
+      .map(([tab, label]) =>
+        `<section class="st-card" style="margin-bottom:18px">
+           <div class="panel"><div class="panel-head"><h2 style="margin:0;font-size:16px">${label}</h2></div>
+           <div class="panel-body">${tableHtml(tab)}</div></div>
+         </section>`).join('');
   }
 
   function standingsHtml() {

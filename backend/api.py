@@ -426,6 +426,38 @@ def api_player_gamelog(player_id: int, season_id: int | None = None,
     return stats.player_gamelog(player_id, season_id=season_id, league_id=league_id)
 
 
+def _stats_filename(tab: str, ext: str) -> str:
+    import re
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", (tab or "stats")).strip("_").lower()
+    return f"{slug or 'stats'}_statistics.{ext}"
+
+
+@router.get("/stats/export.html")
+def api_stats_export_html(season_id: int | None = None, team_id: int | None = None,
+                          tab: str = "batting", level: str = "basic"):
+    fn = _stats_filename(tab, "html")
+    html_str = reports.build_stats_html(season_id=season_id, team_id=team_id,
+                                        tab=tab, level=level)
+    return HTMLResponse(content=html_str, headers={
+        "Content-Disposition": f'attachment; filename="{fn}"'})
+
+
+@router.get("/stats/export.pdf")
+def api_stats_export_pdf(season_id: int | None = None, team_id: int | None = None,
+                         tab: str = "batting", level: str = "basic"):
+    fn = _stats_filename(tab, "pdf")
+    try:
+        pdf_bytes = reports.build_stats_pdf(season_id=season_id, team_id=team_id,
+                                            tab=tab, level=level)
+    except ImportError as exc:
+        raise HTTPException(
+            500,
+            "PDF export needs the 'reportlab' library, which is not installed. "
+            f"({exc})")
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="{fn}"'})
+
+
 # ---- Game report + strike-zone heatmap (Phase 5 viz in reports) ----
 @router.get("/games/{game_id}/report")
 def api_game_report(game_id: int):

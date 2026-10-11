@@ -148,6 +148,17 @@ const App = (() => {
     // Feature 11: hide / show the sidebar.
     const app = document.getElementById('app');
     const tog = document.getElementById('sidebar-toggle');
+    // Keep the top-bar toggle's glyph in sync with the state: an outward-
+    // pointing arrow (») invites the user to re-open a hidden sidebar, while
+    // ☰ collapses it. The toggle lives in the top bar, which is always full-
+    // width, so there is always a visible control to bring the sidebar back.
+    const syncToggle = () => {
+      if (!tog || !app) return;
+      const hidden = app.classList.contains('sidebar-hidden');
+      tog.textContent = hidden ? '\u00BB' : '\u2630';
+      tog.title = hidden ? 'Show sidebar' : 'Hide sidebar';
+      tog.setAttribute('aria-label', hidden ? 'Show sidebar' : 'Hide sidebar');
+    };
     // Fresh UI on every page refresh: never RESTORE a persisted hidden-sidebar
     // state. Carrying that state across a reload is what could leave the user
     // staring at a collapsed / blank-looking screen. Start every page load
@@ -155,12 +166,13 @@ const App = (() => {
     // refresh always gives a clean, fully-rendered UI.
     try { localStorage.removeItem('ds_sidebar_hidden'); } catch (_e) {}
     if (app) app.classList.remove('sidebar-hidden');
-    if (tog && app) tog.onclick = () => { app.classList.toggle('sidebar-hidden'); };
+    if (tog && app) tog.onclick = () => { app.classList.toggle('sidebar-hidden'); syncToggle(); };
     // "Hide Sidebar" button at the bottom of the sidebar. Hiding reveals the
-    // top-bar ☰ toggle, which brings the sidebar back. Not persisted — a
+    // top-bar » toggle, which brings the sidebar back. Not persisted — a
     // refresh restores the sidebar.
     const hideBtn = document.getElementById('sidebar-hide');
-    if (hideBtn && app) hideBtn.onclick = () => { app.classList.add('sidebar-hidden'); };
+    if (hideBtn && app) hideBtn.onclick = () => { app.classList.add('sidebar-hidden'); syncToggle(); };
+    syncToggle();
     show('utilities'); // start on the first working module
   }
 

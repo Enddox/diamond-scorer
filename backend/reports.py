@@ -444,3 +444,280 @@ def build_report_pdf(game_id: int) -> bytes:
 
     doc.build(story)
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Statistics export (web HTML + PDF) -- mirrors the in-app Statistics view
+# ---------------------------------------------------------------------------
+_SBAT = {
+    "basic": [("G","G",0),("PA","PA",0),("AB","AB",0),("R","R",0),("H","H",0),
+        ("HR","HR",0),("RBI","RBI",0),("BB","BB",0),("SO","SO",0),("AVG","AVG",1),
+        ("OBP","OBP",1),("SLG","SLG",1),("OPS","OPS",1)],
+    "advanced": [("2B","2B",0),("3B","3B",0),("SB","SB",0),("CS","CS",0),("TB","TB",0),
+        ("ISO","ISO",1),("BB%","BB%",1),("K%","K%",1)],
+    "detailed": [("IBB","IBB",0),("HBP","HBP",0),("SF","SF",0),("SAC","SAC",0),
+        ("BABIP","BABIP",1),("SB%","SB%",1)],
+}
+_SPIT = {
+    "basic": [("G","G",0),("W","W",0),("L","L",0),("SV","SV",0),("IP","IP",0),("H","H",0),
+        ("R","R",0),("ER","ER",0),("BB","BB",0),("SO","SO",0),("ERA","ERA",2),("WHIP","WHIP",2)],
+    "advanced": [("HR","HR",0),("HBP","HBP",0),("K9","K/9",2),("BB9","BB/9",2),
+        ("KBB","K/BB",2),("RA9","RA/9",2)],
+    "detailed": [("BF","BF",0),("Pit","Pit",0),("Str%","Str%",1),("Sw%","Sw%",1),
+        ("Whiff%","Whiff%",1),("IBB","IBB",0)],
+}
+_SFLD = {
+    "basic": [("G","G",0),("PO","PO",0),("A","A",0),("E","E",0),("DP","DP",0),("FPCT","FPCT",1)],
+    "advanced": [("TC","TC",0),("cCS","CS",0),("cSB","SB",0),("CS%","CS%",1),("cPB","PB",0)],
+    "detailed": [("cPO","PO(C)",0),("pWP","WP",0),("pPO","PO(P)",0)],
+}
+_SSTAND = [("GP","GP",0),("W","W",0),("L","L",0),("T","T",0),("PCT","PCT",1),
+    ("RF","RF",0),("RA","RA",0),("DIFF","DIFF",0),("STRK","STRK",0),("L10","L10",0)]
+
+
+def _stat_cols(tab, level):
+    src = {"batting": _SBAT, "pitching": _SPIT, "fielding": _SFLD}.get(tab, _SBAT)
+    cols = list(src["basic"])
+    if level != "basic":
+        cols += src["advanced"]
+    if level == "detailed":
+        cols += src["detailed"]
+    return cols
+
+
+def _sfmt(v, rate):
+    if v is None or v == "":
+        return ""
+    if rate == 1:
+        try:
+            s = "%.3f" % float(v)
+        except (TypeError, ValueError):
+            return str(v)
+        return s.lstrip("0") if s[:1] != "-" else "-" + s[1:].lstrip("0")
+    if rate == 2:
+        try:
+            return "%.2f" % float(v)
+        except (TypeError, ValueError):
+            return str(v)
+    return str(v)
+
+
+def _stats_meta(season_id, team_id):
+    """Human-readable scope header: (league name, season name, team name)."""
+    from .db import get_conn
+    league = season = team = None
+    try:
+        c = get_conn()
+        if season_id:
+            row = c.execute(
+                "SELECT s.name AS sname, l.name AS lname "
+                "FROM seasons s JOIN leagues l ON l.id = s.league_id "
+                "WHERE s.id = ?", (season_id,)).fetchone()
+            if row:
+                season = row["sname"]
+                league = row["lname"]
+        if team_id:
+            row = c.execute("SELECT name FROM teams WHERE id = ?", (team_id,)).fetchone()
+            team = row["name"] if row else None
+    except Exception:
+        pass
+    return league, season, team
+
+
+def _stats_title(tab):
+    return {"batting": "Batting", "pitching": "Pitching",
+            "fielding": "Fielding", "standings": "Standings"}.get(tab, "Statistics")
+
+
+_STATS_CSS = """
+.rep-header{text-align:center;margin:0 0 24px;padding:4px 0 20px;border-bottom:2px solid #1e3050}
+.rep-header .rh-line{font-size:15px;color:#a8bbd6;line-height:1.55}
+.rep-header .rh-line.lead{font-size:20px;font-weight:800;color:#eaf1fb;letter-spacing:.3px}
+.rep-header .rh-title{margin-top:18px;font-size:27px;font-weight:800;letter-spacing:3px;
+  text-transform:uppercase;color:#4d94ff}
+.rep-header .rh-scope{margin-top:10px;font-size:12px;color:#6f86a8;text-transform:uppercase;letter-spacing:1px}
+.sect{margin:0 0 30px}
+.sect .sect-title{text-align:center;font-size:20px;font-weight:800;letter-spacing:3px;
+  text-transform:uppercase;color:#4d94ff;margin:0 0 14px}
+.card2{background:#0f1b2e;border:1px solid #1e3050;border-radius:14px;padding:18px 20px;
+  box-shadow:0 1px 0 rgba(255,255,255,.02) inset}
+"""
+
+
+def _scope_line(team, level, game_count):
+    bits = [team or "All Teams"]
+    if level:
+        bits.append("%s view" % level.capitalize())
+    bits.append("%d game%s" % (game_count, "" if game_count == 1 else "s"))
+    return "  \u00b7  ".join(bits)
+
+
+def _stats_header_html(league, season, team, level, game_count, report_name=None):
+    lines = []
+    if league:
+        lines.append('<div class="rh-line lead">%s</div>' % _e(league))
+    if season:
+        lines.append('<div class="rh-line">%s</div>' % _e(season))
+    lines.append('<div class="rh-line">%s</div>' % _e(team or "All Teams"))
+    rn = ('<div class="rh-title">%s</div>' % _e((report_name or "").upper())) if report_name else ""
+    scope = '<div class="rh-scope">%s</div>' % _e(_scope_line(team, level, game_count))
+    return '<div class="rep-header">%s%s%s</div>' % ("".join(lines), rn, scope)
+
+
+def _stats_table_html(data, tab, level):
+    cols = _stat_cols(tab, level)
+    head = ('<th class="l">Player</th><th class="l">Tm</th>'
+            + "".join('<th>%s</th>' % _e(l) for _, l, _ in cols))
+    body = []
+    for row in data.get(tab, []):
+        tds = "".join('<td>%s</td>' % _e(_sfmt(row.get(k), rt)) for k, _, rt in cols)
+        body.append('<tr><td class="l">%s</td><td class="l">%s</td>%s</tr>'
+                    % (_e(row.get("name")), _e(row.get("team") or ""), tds))
+    if not body:
+        return '<p class="nodata">No qualifying players in this scope yet.</p>'
+    return ('<table class="box"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>'
+            % (head, "".join(body)))
+
+
+def _standings_table_html(data):
+    cols = _SSTAND
+    head = ('<th class="l">#</th><th class="l">Team</th>'
+            + "".join('<th>%s</th>' % _e(l) for _, l, _ in cols))
+    body = []
+    for i, row in enumerate(data.get("standings", []), 1):
+        tds = "".join('<td>%s</td>' % _e(_sfmt(row.get(k), rt)) for k, _, rt in cols)
+        body.append('<tr><td class="l">%d</td><td class="l">%s</td>%s</tr>'
+                    % (i, _e(row.get("team")), tds))
+    if not body:
+        return '<p class="nodata">No completed games yet.</p>'
+    return ('<table class="box"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>'
+            % (head, "".join(body)))
+
+
+def _stats_doc_html(title, header, body):
+    return (
+        "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>%s \u2014 Diamond Scorer</title><style>%s%s</style></head>"
+        "<body><div class='wrap'>%s%s"
+        "<div class='foot'>Generated by Diamond Scorer \u2014 statistics are derived live "
+        "from the play-by-play log.</div></div></body></html>"
+        % (_e(title), _CSS, _STATS_CSS, header, body)
+    )
+
+
+def build_stats_html(season_id=None, team_id=None, tab="batting", level="basic") -> str:
+    data = stats.stats(season_id=season_id, team_id=team_id)
+    league, season, team = _stats_meta(season_id, team_id)
+    gc = data["game_count"]
+    if tab == "all":
+        header = _stats_header_html(league, season, team, level, gc, report_name=None)
+        sects = []
+        for sub_tab, label in (("batting", "Batting"), ("pitching", "Pitching"),
+                               ("fielding", "Fielding")):
+            sects.append('<div class="sect"><div class="sect-title">%s</div>'
+                         '<div class="card2">%s</div></div>'
+                         % (label.upper(), _stats_table_html(data, sub_tab, level)))
+        return _stats_doc_html("All Individual Statistics", header, "".join(sects))
+    report_name = _stats_title(tab)
+    header = _stats_header_html(league, season, team, level, gc, report_name=report_name)
+    body = (_standings_table_html(data) if tab == "standings"
+            else _stats_table_html(data, tab, level))
+    return _stats_doc_html(report_name + " Statistics", header, body)
+
+
+def build_stats_pdf(season_id=None, team_id=None, tab="batting", level="basic") -> bytes:
+    import io
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                    TableStyle, HRFlowable)
+
+    data = stats.stats(season_id=season_id, team_id=team_id)
+    league, season, team = _stats_meta(season_id, team_id)
+    gc = data["game_count"]
+    ss = getSampleStyleSheet()
+    lead = ParagraphStyle("lead", parent=ss["Normal"], fontSize=17, leading=21,
+                          alignment=TA_CENTER, fontName="Helvetica-Bold",
+                          textColor=colors.HexColor("#0b1f3a"))
+    meta = ParagraphStyle("meta", parent=ss["Normal"], fontSize=12, leading=16,
+                          alignment=TA_CENTER, textColor=colors.HexColor("#44586f"))
+    rtitle = ParagraphStyle("rtitle", parent=ss["Title"], fontSize=22, spaceBefore=12,
+                            alignment=TA_CENTER, textColor=colors.HexColor("#1c4f8f"))
+    scope = ParagraphStyle("scope", parent=ss["Normal"], fontSize=9, alignment=TA_CENTER,
+                           textColor=colors.HexColor("#7a8aa0"), spaceBefore=6, spaceAfter=4)
+    sect = ParagraphStyle("sect", parent=ss["Title"], fontSize=16, alignment=TA_CENTER,
+                          textColor=colors.HexColor("#1c4f8f"), spaceBefore=10, spaceAfter=6)
+
+    def _table(tdata, lead_cols):
+        t = Table(tdata, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1c4f8f")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("ALIGN", (lead_cols, 0), (-1, -1), "RIGHT"),
+            ("ALIGN", (0, 0), (lead_cols - 1, -1), "LEFT"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f2f6fc")]),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d6dfed")),
+        ]))
+        return t
+
+    def _player_table(sub_tab):
+        cols = _stat_cols(sub_tab, level)
+        header = ["Player", "Tm"] + [l for _, l, _ in cols]
+        rows = data.get(sub_tab, [])
+        if not rows:
+            return Paragraph("No qualifying players in this scope yet.", meta)
+        tdata = [header]
+        for row in rows:
+            tdata.append([str(row.get("name", "")), str(row.get("team", "") or "")]
+                         + [_sfmt(row.get(k), rt) for k, _, rt in cols])
+        return _table(tdata, 2)
+
+    def _standings_table():
+        cols = _SSTAND
+        header = ["#", "Team"] + [l for _, l, _ in cols]
+        rows = data.get("standings", [])
+        if not rows:
+            return Paragraph("No completed games yet.", meta)
+        tdata = [header]
+        for i, row in enumerate(rows, 1):
+            tdata.append([str(i), str(row.get("team", ""))]
+                         + [_sfmt(row.get(k), rt) for k, _, rt in cols])
+        return _table(tdata, 2)
+
+    is_all = (tab == "all")
+    doc_title = "All Individual Statistics" if is_all else (_stats_title(tab) + " Statistics")
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=12 * mm,
+                            rightMargin=12 * mm, topMargin=14 * mm, bottomMargin=14 * mm,
+                            title=doc_title)
+    story = []
+    if league:
+        story.append(Paragraph(_e(league), lead))
+    if season:
+        story.append(Paragraph(_e(season), meta))
+    story.append(Paragraph(_e(team or "All Teams"), meta))
+    if not is_all:
+        story.append(Paragraph(_e(_stats_title(tab).upper()), rtitle))
+    story.append(Paragraph(_e(_scope_line(team, level, gc)), scope))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#c3cfe0"),
+                            spaceBefore=2, spaceAfter=12))
+    if is_all:
+        for sub_tab, label in (("batting", "Batting"), ("pitching", "Pitching"),
+                               ("fielding", "Fielding")):
+            story.append(Paragraph(label.upper(), sect))
+            story.append(_player_table(sub_tab))
+            story.append(Spacer(1, 12))
+    elif tab == "standings":
+        story.append(_standings_table())
+    else:
+        story.append(_player_table(tab))
+    doc.build(story)
+    return buf.getvalue()
