@@ -268,6 +268,11 @@ const Scorer = (() => {
   function bindLineupSetup() { renderLineupEditor(); }
 
   async function renderLineupEditor() {
+    // Self-guarding: this is async and is invoked un-awaited (bindLineupSetup,
+    // the Lineups header button, the pos-number toggle, add/remove slot). An
+    // uncaught throw here would escape as an unhandledrejection and blank the
+    // view, so route any failure to the inline, retryable scorer error card.
+    try {
     S._names = null;
     const host = document.getElementById('lu-editor') || (() => {
       root().querySelector('.scorer').insertAdjacentHTML('beforeend',
@@ -299,6 +304,9 @@ const Scorer = (() => {
     if (pn) pn.onchange = () => { S.posAsNumbers = pn.checked; renderLineupEditor(); };
     ['away','home'].forEach(bindSideEditor);
     document.getElementById('lu-save').onclick = saveLineups;
+    } catch (e) {
+      showScorerError(e, () => renderLineupEditor());
+    }
   }
   // ---- Lineup draft autosave (survives tab switches / reloads) --------------
   function draftKey() { return `ds_lineup_draft_${S.gameId}`; }

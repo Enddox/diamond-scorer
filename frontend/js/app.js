@@ -148,18 +148,19 @@ const App = (() => {
     // Feature 11: hide / show the sidebar.
     const app = document.getElementById('app');
     const tog = document.getElementById('sidebar-toggle');
-    if (app && localStorage.getItem('ds_sidebar_hidden') === '1') app.classList.add('sidebar-hidden');
-    if (tog && app) tog.onclick = () => {
-      const hidden = app.classList.toggle('sidebar-hidden');
-      try { localStorage.setItem('ds_sidebar_hidden', hidden ? '1' : '0'); } catch (_e) {}
-    };
+    // Fresh UI on every page refresh: never RESTORE a persisted hidden-sidebar
+    // state. Carrying that state across a reload is what could leave the user
+    // staring at a collapsed / blank-looking screen. Start every page load
+    // with the sidebar visible and the stored flag cleared, so a simple browser
+    // refresh always gives a clean, fully-rendered UI.
+    try { localStorage.removeItem('ds_sidebar_hidden'); } catch (_e) {}
+    if (app) app.classList.remove('sidebar-hidden');
+    if (tog && app) tog.onclick = () => { app.classList.toggle('sidebar-hidden'); };
     // "Hide Sidebar" button at the bottom of the sidebar. Hiding reveals the
-    // top-bar ☰ toggle, which brings the sidebar back.
+    // top-bar ☰ toggle, which brings the sidebar back. Not persisted — a
+    // refresh restores the sidebar.
     const hideBtn = document.getElementById('sidebar-hide');
-    if (hideBtn && app) hideBtn.onclick = () => {
-      app.classList.add('sidebar-hidden');
-      try { localStorage.setItem('ds_sidebar_hidden', '1'); } catch (_e) {}
-    };
+    if (hideBtn && app) hideBtn.onclick = () => { app.classList.add('sidebar-hidden'); };
     show('utilities'); // start on the first working module
   }
 
