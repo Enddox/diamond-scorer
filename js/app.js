@@ -5,7 +5,7 @@
 
 import { api } from './api.js';
 import { computeStateFromEvents, resultCatalogue, POS_NUM } from './scoring.js';
-import { stats, playerGamelog, computeState } from './stats.js';
+import { stats, playerGamelog } from './stats.js';
 import { buildHeatmapSVG, buildSpraySVG, buildPitchZoneGrid, buildChaseZones } from './viz.js';
 import { buildGameReportHTML, buildStatsHTML, generateGameReportPDF, generateStatsPDF } from './reports.js';
 import { exportSession, exportSessionZIP, importSession, downloadTemplate } from './importexport.js';

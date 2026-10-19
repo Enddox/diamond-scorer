@@ -248,3 +248,5 @@ export const IN_ZONE = new Set([1,2,3,4,5,6,7,8,9]);
 export const OUT_ZONE = new Set([11,12,13,14]);
 
 export const ALL_ZONES = [1,2,3,4,5,6,7,8,9,11,12,13,14];
+
+export { computeState as computeStateFromEvents };
