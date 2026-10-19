@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diamond Scorer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header" role="banner">
+            <div class="header-left">
+                <svg class="logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                    <path d="M16 2L8 8v16l8 6 8-6V8L16 2z" stroke="currentColor" stroke-width="2" fill="currentColor" fill-opacity="0.15"/>
+                    <path d="M16 8v16M8 14h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <h1 class="app-title">Diamond Scorer</h1>
+            </div>
+            <nav class="header-nav" role="navigation" aria-label="Navegación principal">
+                <button class="nav-btn" data-view="dashboard" aria-current="page">Dashboard</button>
+                <button class="nav-btn" data-view="categories">Categorías</button>
+                <button class="nav-btn" data-view="tourneys">Torneos</button>
+                <button class="nav-btn" data-view="teams">Equipos</button>
+                <button class="nav-btn" data-view="players">Jugadores</button>
+                <button class="nav-btn" data-view="games">Juegos</button>
+                <button class="nav-btn" data-view="stats">Estadísticas</button>
+                <button class="nav-btn" data-view="settings">Configuración</button>
+            </nav>
+            <div class="header-right">
+                <button class="icon-btn" id="btn-sync" title="Sincronizar con Supabase" aria-label="Sincronizar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                </button>
+                <button class="icon-btn" id="btn-export" title="Exportar datos" aria-label="Exportar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </button>
+                <button class="icon-btn" id="btn-import" title="Importar datos" aria-label="Importar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </button>
+                <div class="status-indicator" id="connection-status" title="Desconectado">
+                    <span class="status-dot"></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <main class="main" role="main">
+            <!-- Dashboard View -->
+            <section class="view" id="view-dashboard" aria-labelledby="dashboard-title">
+                <header class="view-header">
+                    <h2 id="dashboard-title">Dashboard</h2>
+                    <div class="view-actions">
+                        <button class="btn btn-primary" data-action="new-tourney">Nuevo Torneo</button>
+                        <button class="btn btn-secondary" data-action="new-game">Nuevo Juego</button>
+                    </div>
+                </header>
+                <div class="dashboard-grid">
+                    <div class="stat-card">
+                        <span class="stat-icon">🏆</span>
+                        <div class="stat-info">
+                            <span class="stat-value" id="stat-tourneys">0</span>
+                            <span class="stat-label">Torneos</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-icon">⚾</span>
+                        <div class="stat-info">
+                            <span class="stat-value" id="stat-teams">0</span>
+                            <span class="stat-label">Equipos</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-icon">👥</span>
+                        <div class="stat-info">
+                            <span class="stat-value" id="stat-players">0</span>
+                            <span class="stat-label">Jugadores</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-icon">📋</span>
+                        <div class="stat-info">
+                            <span class="stat-value" id="stat-games">0</span>
+                            <span class="stat-label">Juegos</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="recent-section">
+                    <h3>Juegos Recientes</h3>
+                    <div class="table-responsive">
+                        <table class="data-table" id="recent-games-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Torneo</th>
+                                    <th>Visitante</th>
+                                    <th>Local</th>
+                                    <th>Marcador</th>
+                                    <th>Estado</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Categories View -->
+            <section class="view hidden" id="view-categories" aria-labelledby="categories-title">
+                <header class="view-header">
+                    <h2 id="categories-title">Categorías</h2>
+                    <button class="btn btn-primary" data-action="new-category">Nueva Categoría</button>
+                </header>
+                <div class="table-responsive">
+                    <table class="data-table" id="categories-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Edad Mín</th>
+                                <th>Edad Máx</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Tourneys View -->
+            <section class="view hidden" id="view-tourneys" aria-labelledby="tourneys-title">
+                <header class="view-header">
+                    <h2 id="tourneys-title">Torneos</h2>
+                    <div class="view-actions">
+                        <button class="btn btn-primary" data-action="new-tourney">Nuevo Torneo</button>
+                        <select class="filter-select" id="filter-tourney-category" aria-label="Filtrar por categoría">
+                            <option value="">Todas las categorías</option>
+                        </select>
+                    </div>
+                </header>
+                <div class="table-responsive">
+                    <table class="data-table" id="tourneys-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Abrev</th>
+                                <th>Categoría</th>
+                                <th>Año</th>
+                                <th>Tipo</th>
+                                <th>Equipos</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Teams View -->
+            <section class="view hidden" id="view-teams" aria-labelledby="teams-title">
+                <header class="view-header">
+                    <h2 id="teams-title">Equipos</h2>
+                    <div class="view-actions">
+                        <button class="btn btn-primary" data-action="new-team">Nuevo Equipo</button>
+                        <select class="filter-select" id="filter-team-category" aria-label="Filtrar por categoría">
+                            <option value="">Todas las categorías</option>
+                        </select>
+                    </div>
+                </header>
+                <div class="table-responsive">
+                    <table class="data-table" id="teams-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Abrev</th>
+                                <th>Ciudad/Lugar</th>
+                                <th>Categoría</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Players View -->
+            <section class="view hidden" id="view-players" aria-labelledby="players-title">
+                <header class="view-header">
+                    <h2 id="players-title">Jugadores</h2>
+                    <div class="view-actions">
+                        <button class="btn btn-primary" data-action="new-player">Nuevo Jugador</button>
+                        <select class="filter-select" id="filter-player-team" aria-label="Filtrar por equipo">
+                            <option value="">Todos los equipos</option>
+                        </select>
+                    </div>
+                </header>
+                <div class="table-responsive">
+                    <table class="data-table" id="players-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Pos</th>
+                                <th>B/T</th>
+                                <th>Equipo</th>
+                                <th>#</th>
+                                <th>Nac.</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Games View -->
+            <section class="view hidden" id="view-games" aria-labelledby="games-title">
+                <header class="view-header">
+                    <h2 id="games-title">Juegos</h2>
+                    <div class="view-actions">
+                        <button class="btn btn-primary" data-action="new-game">Nuevo Juego</button>
+                        <select class="filter-select" id="filter-game-tourney" aria-label="Filtrar por torneo">
+                            <option value="">Todos los torneos</option>
+                        </select>
+                        <select class="filter-select" id="filter-game-status" aria-label="Filtrar por estado">
+                            <option value="">Todos los estados</option>
+                            <option value="scheduled">Programado</option>
+                            <option value="in_progress">En Juego</option>
+                            <option value="finished">Finalizado</option>
+                            <option value="cancelled">Cancelado</option>
+                            <option value="postponed">Pospuesto</option>
+                        </select>
+                    </div>
+                </header>
+                <div class="table-responsive">
+                    <table class="data-table" id="games-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Torneo</th>
+                                <th>Visitante</th>
+                                <th>Local</th>
+                                <th>Marcador</th>
+                                <th>Entradas</th>
+                                <th>Estado</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Stats View -->
+            <section class="view hidden" id="view-stats" aria-labelledby="stats-title">
+                <header class="view-header">
+                    <h2 id="stats-title">Estadísticas</h2>
+                    <div class="view-actions">
+                        <select class="filter-select" id="stats-scope-category" aria-label="Categoría">
+                            <option value="">Todas</option>
+                        </select>
+                        <select class="filter-select" id="stats-scope-tourney" aria-label="Torneo">
+                            <option value="">Todos</option>
+                        </select>
+                        <select class="filter-select" id="stats-scope-team" aria-label="Equipo">
+                            <option value="">Todos</option>
+                        </select>
+                        <select class="filter-select" id="stats-tab" aria-label="Pestaña">
+                            <option value="batting">Bateo</option>
+                            <option value="pitching">Picheo</option>
+                            <option value="fielding">Defensa</option>
+                            <option value="standings">Posiciones</option>
+                        </select>
+                        <select class="filter-select" id="stats-level" aria-label="Nivel">
+                            <option value="basic">Básico</option>
+                            <option value="advanced">Avanzado</option>
+                            <option value="detailed">Detallado</option>
+                        </select>
+                        <button class="btn btn-secondary" id="btn-stats-export-html">Exportar HTML</button>
+                        <button class="btn btn-secondary" id="btn-stats-export-pdf">Exportar PDF</button>
+                    </div>
+                </header>
+                <div class="table-responsive" id="stats-container"></div>
+            </section>
+
+            <!-- Settings View -->
+            <section class="view hidden" id="view-settings" aria-labelledby="settings-title">
+                <header class="view-header">
+                    <h2 id="settings-title">Configuración</h2>
+                </header>
+                <div class="settings-grid">
+                    <div class="settings-card">
+                        <h3>Conexión Supabase</h3>
+                        <div class="form-group">
+                            <label for="supabase-url">URL del Proyecto</label>
+                            <input type="url" id="supabase-url" class="form-input" placeholder="https://xxx.supabase.co" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="supabase-key">Anon Key</label>
+                            <input type="password" id="supabase-key" class="form-input" placeholder="eyJhbGciOi..." required>
+                        </div>
+                        <button class="btn btn-primary" id="btn-test-connection">Probar Conexión</button>
+                        <p class="status-text" id="connection-test-result"></p>
+                    </div>
+                    <div class="settings-card">
+                        <h3>Datos</h3>
+                        <button class="btn btn-secondary" id="btn-export-data">Exportar Todo (JSON)</button>
+                        <button class="btn btn-secondary" id="btn-import-data">Importar (JSON)</button>
+                        <input type="file" id="import-file" accept=".json" hidden>
+                        <p class="hint">Exporta/importa respaldos completos de la base de datos.</p>
+                    </div>
+                    <div class="settings-card">
+                        <h3>Acerca de</h3>
+                        <p>Diamond Scorer v2.0 - Scorer de béisbol estilo MLB/LVBP</p>
+                        <p>Backend: Supabase (PostgreSQL + Realtime)</p>
+                        <p>Frontend: HTML/CSS/JS vanilla</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Modals -->
+        <div class="modal-overlay hidden" id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <div class="modal" id="modal">
+                <header class="modal-header">
+                    <h3 id="modal-title">Título</h3>
+                    <button class="icon-btn modal-close" aria-label="Cerrar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </header>
+                <form class="modal-body" id="modal-form"></form>
+                <footer class="modal-footer">
+                    <button class="btn btn-secondary modal-cancel">Cancelar</button>
+                    <button class="btn btn-primary modal-submit" type="submit" form="modal-form">Guardar</button>
+                </footer>
+            </div>
+        </div>
+
+        <!-- Game Scorer Modal (large) -->
+        <div class="modal-overlay hidden" id="scorer-overlay" role="dialog" aria-modal="true" aria-labelledby="scorer-title">
+            <div class="modal modal-full" id="scorer-modal">
+                <header class="modal-header">
+                    <h3 id="scorer-title">Scorer - <span id="scorer-game-info"></span></h3>
+                    <div class="scorer-header-actions">
+                        <select id="scorer-view-mode" class="compact-select" aria-label="Vista">
+                            <option value="scoring">Scoring</option>
+                            <option value="lineup">Alineaciones</option>
+                            <option value="pitches">Lanzamientos</option>
+                        </select>
+                        <button class="icon-btn" id="btn-scorer-undo" title="Deshacer (Ctrl+Z)" aria-label="Deshacer">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                        </button>
+                        <button class="btn btn-danger" id="btn-scorer-end" title="Finalizar juego">Finalizar</button>
+                        <button class="icon-btn modal-close" aria-label="Cerrar scorer">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                </header>
+                <div class="scorer-body" id="scorer-body">
+                    <!-- Scoring view injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast notifications -->
+        <div class="toast-container" id="toast-container" aria-live="polite"></div>
+    </div>
+
+    <!-- External libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+    <!-- App modules -->
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
