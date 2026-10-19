@@ -1,1 +1,0 @@
-"""Diamond Scorer backend package."""
