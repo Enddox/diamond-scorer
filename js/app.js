@@ -385,12 +385,12 @@ function setupModals() {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         if (btn.dataset.action === 'new-category') {
-            openModal('Nueva Categoría', categoryFormHTML(), async d => await api.createCategory(d));
+            openModal('Nueva Categoría', categoryFormHTML(), async d => { await api.createCategory(d); await loadAllCache(); });
         } else if (btn.dataset.action === 'edit-category') {
             const cat = state.cache.categories.find(c => c.id == btn.dataset.id);
-            openModal('Editar Categoría', categoryFormHTML(cat), async d => await api.updateCategory(cat.id, d));
+            openModal('Editar Categoría', categoryFormHTML(cat), async d => { await api.updateCategory(cat.id, d); await loadAllCache(); });
         } else if (btn.dataset.action === 'delete-category') {
-            if (confirm('¿Eliminar esta categoría?')) { await api.deleteCategory(btn.dataset.id); loadViewData('categories'); }
+            if (confirm('¿Eliminar esta categoría?')) { await api.deleteCategory(btn.dataset.id); await loadAllCache(); }
         }
     });
 
@@ -399,14 +399,14 @@ function setupModals() {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         if (btn.dataset.action === 'new-tourney') {
-            openModal('Nuevo Torneo', tourneyFormHTML(), async d => { d.category_id = parseInt(d.category_id); d.is_event = d.is_event === 'on'; d.year = d.year ? parseInt(d.year) : null; await api.createTourney(d); });
+            openModal('Nuevo Torneo', tourneyFormHTML(), async d => { d.category_id = parseInt(d.category_id); d.is_event = d.is_event === 'on'; d.year = d.year ? parseInt(d.year) : null; await api.createTourney(d); await loadAllCache(); });
         } else if (btn.dataset.action === 'edit-tourney') {
             const t = state.cache.tourneys.find(x => x.id == btn.dataset.id);
-            openModal('Editar Torneo', tourneyFormHTML(t), async d => { d.category_id = parseInt(d.category_id); d.is_event = d.is_event === 'on'; d.year = d.year ? parseInt(d.year) : null; await api.updateTourney(t.id, d); });
+            openModal('Editar Torneo', tourneyFormHTML(t), async d => { d.category_id = parseInt(d.category_id); d.is_event = d.is_event === 'on'; d.year = d.year ? parseInt(d.year) : null; await api.updateTourney(t.id, d); await loadAllCache(); });
         } else if (btn.dataset.action === 'manage-teams') {
             openTourneyTeamsModal(btn.dataset.id);
         } else if (btn.dataset.action === 'delete-tourney') {
-            if (confirm('¿Eliminar este torneo?')) { await api.deleteTourney(btn.dataset.id); loadViewData('tourneys'); }
+            if (confirm('¿Eliminar este torneo?')) { await api.deleteTourney(btn.dataset.id); await loadAllCache(); }
         }
     });
 
@@ -415,12 +415,12 @@ function setupModals() {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         if (btn.dataset.action === 'new-team') {
-            openModal('Nuevo Equipo', teamFormHTML(), async d => { d.category_id = parseInt(d.category_id); await api.createTeam(d); });
+            openModal('Nuevo Equipo', teamFormHTML(), async d => { d.category_id = parseInt(d.category_id); await api.createTeam(d); await loadAllCache(); });
         } else if (btn.dataset.action === 'edit-team') {
             const t = state.cache.teams.find(x => x.id == btn.dataset.id);
-            openModal('Editar Equipo', teamFormHTML(t), async d => { d.category_id = parseInt(d.category_id); await api.updateTeam(t.id, d); });
+            openModal('Editar Equipo', teamFormHTML(t), async d => { d.category_id = parseInt(d.category_id); await api.updateTeam(t.id, d); await loadAllCache(); });
         } else if (btn.dataset.action === 'delete-team') {
-            if (confirm('¿Eliminar este equipo?')) { await api.deleteTeam(btn.dataset.id); loadViewData('teams'); }
+            if (confirm('¿Eliminar este equipo?')) { await api.deleteTeam(btn.dataset.id); await loadAllCache(); }
         }
     });
 
@@ -429,12 +429,12 @@ function setupModals() {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         if (btn.dataset.action === 'new-player') {
-            openModal('Nuevo Jugador', playerFormHTML(), async d => { d.team_id = d.team_id ? parseInt(d.team_id) : null; d.jersey_number = d.jersey_number ? parseInt(d.jersey_number) : null; d.weight_kg = d.weight_kg ? parseFloat(d.weight_kg) : null; d.height_cm = d.height_cm ? parseInt(d.height_cm) : null; await api.createPlayer(d); });
+            openModal('Nuevo Jugador', playerFormHTML(), async d => { d.team_id = d.team_id ? parseInt(d.team_id) : null; d.jersey_number = d.jersey_number ? parseInt(d.jersey_number) : null; d.weight_kg = d.weight_kg ? parseFloat(d.weight_kg) : null; d.height_cm = d.height_cm ? parseInt(d.height_cm) : null; await api.createPlayer(d); await loadAllCache(); });
         } else if (btn.dataset.action === 'edit-player') {
             const p = state.cache.players.find(x => x.id == btn.dataset.id);
-            openModal('Editar Jugador', playerFormHTML(p), async d => { d.team_id = d.team_id ? parseInt(d.team_id) : null; d.jersey_number = d.jersey_number ? parseInt(d.jersey_number) : null; d.weight_kg = d.weight_kg ? parseFloat(d.weight_kg) : null; d.height_cm = d.height_cm ? parseInt(d.height_cm) : null; await api.updatePlayer(p.id, d); });
+            openModal('Editar Jugador', playerFormHTML(p), async d => { d.team_id = d.team_id ? parseInt(d.team_id) : null; d.jersey_number = d.jersey_number ? parseInt(d.jersey_number) : null; d.weight_kg = d.weight_kg ? parseFloat(d.weight_kg) : null; d.height_cm = d.height_cm ? parseInt(d.height_cm) : null; await api.updatePlayer(p.id, d); await loadAllCache(); });
         } else if (btn.dataset.action === 'delete-player') {
-            if (confirm('¿Eliminar este jugador?')) { await api.deletePlayer(btn.dataset.id); loadViewData('players'); }
+            if (confirm('¿Eliminar este jugador?')) { await api.deletePlayer(btn.dataset.id); await loadAllCache(); }
         }
     });
 
@@ -443,16 +443,16 @@ function setupModals() {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         if (btn.dataset.action === 'new-game') {
-            openModal('Nuevo Juego', gameFormHTML(), async d => { d.tourney_id = parseInt(d.tourney_id); d.away_team_id = parseInt(d.away_team_id); d.home_team_id = parseInt(d.home_team_id); d.innings = parseInt(d.innings) || 9; d.away_score = 0; d.home_score = 0; d.status = 'scheduled'; await api.createGame(d); });
+            openModal('Nuevo Juego', gameFormHTML(), async d => { d.tourney_id = parseInt(d.tourney_id); d.away_team_id = parseInt(d.away_team_id); d.home_team_id = parseInt(d.home_team_id); d.innings = parseInt(d.innings) || 9; d.away_score = 0; d.home_score = 0; d.status = 'scheduled'; await api.createGame(d); await loadAllCache(); });
         } else if (btn.dataset.action === 'open-scorer') {
             openScorer(btn.dataset.gameId);
         } else if (btn.dataset.action === 'view-report') {
             viewGameReport(btn.dataset.gameId);
         } else if (btn.dataset.action === 'edit-game') {
             const g = state.cache.games.find(x => x.id == btn.dataset.id);
-            openModal('Editar Juego', gameFormHTML(g), async d => { d.tourney_id = parseInt(d.tourney_id); d.away_team_id = parseInt(d.away_team_id); d.home_team_id = parseInt(d.home_team_id); d.innings = parseInt(d.innings) || 9; await api.updateGame(g.id, d); });
+            openModal('Editar Juego', gameFormHTML(g), async d => { d.tourney_id = parseInt(d.tourney_id); d.away_team_id = parseInt(d.away_team_id); d.home_team_id = parseInt(d.home_team_id); d.innings = parseInt(d.innings) || 9; await api.updateGame(g.id, d); await loadAllCache(); });
         } else if (btn.dataset.action === 'delete-game') {
-            if (confirm('¿Eliminar este juego?')) { await api.deleteGame(btn.dataset.id); loadViewData('games'); }
+            if (confirm('¿Eliminar este juego?')) { await api.deleteGame(btn.dataset.id); await loadAllCache(); }
         }
     });
 
@@ -460,8 +460,8 @@ function setupModals() {
     $('#view-dashboard').addEventListener('click', async e => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
-        if (btn.dataset.action === 'new-tourney') { openModal('Nuevo Torneo', tourneyFormHTML(), async d => { d.category_id = parseInt(d.category_id); d.is_event = d.is_event === 'on'; d.year = d.year ? parseInt(d.year) : null; await api.createTourney(d); }); }
-        if (btn.dataset.action === 'new-game') { openModal('Nuevo Juego', gameFormHTML(), async d => { d.tourney_id = parseInt(d.tourney_id); d.away_team_id = parseInt(d.away_team_id); d.home_team_id = parseInt(d.home_team_id); d.innings = parseInt(d.innings) || 9; d.away_score = 0; d.home_score = 0; d.status = 'scheduled'; await api.createGame(d); }); }
+        if (btn.dataset.action === 'new-tourney') { openModal('Nuevo Torneo', tourneyFormHTML(), async d => { d.category_id = parseInt(d.category_id); d.is_event = d.is_event === 'on'; d.year = d.year ? parseInt(d.year) : null; await api.createTourney(d); await loadAllCache(); }); }
+        if (btn.dataset.action === 'new-game') { openModal('Nuevo Juego', gameFormHTML(), async d => { d.tourney_id = parseInt(d.tourney_id); d.away_team_id = parseInt(d.away_team_id); d.home_team_id = parseInt(d.home_team_id); d.innings = parseInt(d.innings) || 9; d.away_score = 0; d.home_score = 0; d.status = 'scheduled'; await api.createGame(d); await loadAllCache(); }); }
     });
 }
 
@@ -536,6 +536,7 @@ async function openTourneyTeamsModal(tourneyId) {
 window.toggleTourneyTeam = async (tourneyId, teamId, checked) => {
     if (checked) await api.addTeamToTourney(tourneyId, teamId);
     else await api.removeTeamFromTourney(tourneyId, teamId);
+    await loadAllCache();
     toast(checked ? 'Equipo agregado' : 'Equipo removido', 'success');
 };
 
