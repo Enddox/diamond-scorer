@@ -22,19 +22,19 @@ export class SupabaseAPI {
     }
 
     _setupRealtime() {
-        // Connection state
-        this.supabase.realtime.onOpen(() => {
-            this.connected = true;
-            this._emit('connection', { connected: true });
+        // Connection state via channel
+        const channel = this.supabase.channel('connection-state');
+        channel.subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                this.connected = true;
+                this._emit('connection', { connected: true });
+            } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+                this.connected = false;
+                this._emit('connection', { connected: false });
+            }
         });
-        this.supabase.realtime.onClose(() => {
-            this.connected = false;
-            this._emit('connection', { connected: false });
-        });
-        this.supabase.realtime.onError((err) => {
-            console.error('Realtime error:', err);
-            this._emit('connection', { connected: false, error: err });
-        });
+        // Store reference to clean up if needed
+        this._connectionChannel = channel;
     }
 
     // Event emitter pattern
