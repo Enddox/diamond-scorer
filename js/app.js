@@ -381,7 +381,7 @@ function closeModal() {
 // =========================================
 function setupModals() {
     // Category
-    $('#view-categories').addEventListener('click', e => {
+    $('#view-categories').addEventListener('click', async e => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         if (btn.dataset.action === 'new-category') {
@@ -395,7 +395,7 @@ function setupModals() {
     });
 
     // Tourneys
-    $('#view-tourneys').addEventListener('click', e => {
+    $('#view-tourneys').addEventListener('click', async e => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         if (btn.dataset.action === 'new-tourney') {
@@ -411,7 +411,7 @@ function setupModals() {
     });
 
     // Teams
-    $('#view-teams').addEventListener('click', e => {
+    $('#view-teams').addEventListener('click', async e => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         if (btn.dataset.action === 'new-team') {
@@ -425,7 +425,7 @@ function setupModals() {
     });
 
     // Players
-    $('#view-players').addEventListener('click', e => {
+    $('#view-players').addEventListener('click', async e => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         if (btn.dataset.action === 'new-player') {
@@ -439,7 +439,7 @@ function setupModals() {
     });
 
     // Games
-    $('#view-games').addEventListener('click', e => {
+    $('#view-games').addEventListener('click', async e => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         if (btn.dataset.action === 'new-game') {
@@ -457,7 +457,7 @@ function setupModals() {
     });
 
     // Dashboard quick actions
-    $('#view-dashboard').addEventListener('click', e => {
+    $('#view-dashboard').addEventListener('click', async e => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         if (btn.dataset.action === 'new-tourney') { openModal('Nuevo Torneo', tourneyFormHTML(), async d => { d.category_id = parseInt(d.category_id); d.is_event = d.is_event === 'on'; d.year = d.year ? parseInt(d.year) : null; await api.createTourney(d); }); }
